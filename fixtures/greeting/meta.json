@@ -1,0 +1,5 @@
+{
+  "id": "greeting",
+  "description": "Short greeting should match golden text exactly",
+  "metrics": ["exact_match", "case_insensitive_match"]
+}

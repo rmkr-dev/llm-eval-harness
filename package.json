@@ -1,0 +1,34 @@
+{
+  "name": "llm-eval-harness",
+  "version": "0.1.0",
+  "description": "Lightweight offline LLM eval harness: score prompt/model outputs against golden fixtures and emit a JSON report.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "llm-eval": "src/run-eval.js"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "eval": "node src/run-eval.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "llm",
+    "eval",
+    "harness",
+    "fixtures",
+    "golden",
+    "offline"
+  ],
+  "license": "MIT",
+  "files": [
+    "src/",
+    "fixtures/",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "LICENSE"
+  ]
+}
