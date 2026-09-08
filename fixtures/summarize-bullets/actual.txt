@@ -1,0 +1,2 @@
+- Loads golden fixtures and compares outputs with simple metrics
+- Emits a JSON report suitable for CI

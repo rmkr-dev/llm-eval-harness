@@ -1,0 +1,3 @@
+Summarize the following in exactly two bullet points:
+The eval harness loads golden fixtures, compares model output to expected text
+using simple metrics, and writes a JSON report for CI.
