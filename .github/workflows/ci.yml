@@ -10,13 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: "20"
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
       - name: Unit tests
-        run: npm test
+        run: pytest
       - name: Sample eval
-        run: npm run eval -- --fixtures fixtures --out eval-report.json --require-actual
+        run: llm-eval --fixtures fixtures --out eval-report.json --require-actual
       - name: Upload eval report
         if: always()
         uses: actions/upload-artifact@v4

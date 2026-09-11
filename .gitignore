@@ -1,7 +1,15 @@
-node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
 eval-report.json
 *.log
 .DS_Store
 .coverage/
-dist/
+.pytest_cache/
 .tmp/
