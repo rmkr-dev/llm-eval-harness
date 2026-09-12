@@ -10,6 +10,7 @@ from typing import Any
 
 import click
 
+from .metrics import list_metrics as registered_metrics
 from .metrics import score as score_metrics
 from .report import build_report, format_summary
 
@@ -53,10 +54,15 @@ def _load_case(case_dir: Path, case_name: str) -> dict[str, Any] | None:
     }
 
 
-def _discover_cases(fixtures_dir: Path) -> list[dict[str, Any]]:
+def _discover_cases(
+    fixtures_dir: Path,
+    only: set[str] | None = None,
+) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for ent in fixtures_dir.iterdir():
         if not ent.is_dir() or ent.name.startswith("."):
+            continue
+        if only is not None and ent.name not in only:
             continue
         loaded = _load_case(ent, ent.name)
         if loaded is not None:
@@ -87,8 +93,33 @@ def _discover_cases(fixtures_dir: Path) -> list[dict[str, Any]]:
     default=False,
     help="Fail cases that are missing actual.txt instead of skipping.",
 )
-def main(fixtures_dir: str, out_path: str | None, require_actual: bool) -> None:
+@click.option(
+    "--case",
+    "-c",
+    "case_ids",
+    multiple=True,
+    help="Only run named case ids (directory names). Repeatable.",
+)
+@click.option(
+    "--list-metrics",
+    "list_metrics_flag",
+    is_flag=True,
+    default=False,
+    help="Print registered metric names one per line and exit.",
+)
+def main(
+    fixtures_dir: str,
+    out_path: str | None,
+    require_actual: bool,
+    case_ids: tuple[str, ...],
+    list_metrics_flag: bool,
+) -> None:
     """Score fixture actual.txt against expected.txt; emit a JSON report."""
+    if list_metrics_flag:
+        for name in registered_metrics():
+            click.echo(name)
+        sys.exit(0)
+
     fixtures = Path(fixtures_dir).resolve()
     started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -96,7 +127,8 @@ def main(fixtures_dir: str, out_path: str | None, require_actual: bool) -> None:
         click.echo(f"Fixtures directory not found: {fixtures}", err=True)
         sys.exit(2)
 
-    loaded = _discover_cases(fixtures)
+    only = set(case_ids) if case_ids else None
+    loaded = _discover_cases(fixtures, only=only)
     if not loaded:
         click.echo(
             f"No fixture cases with expected.txt under {fixtures}",
