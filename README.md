@@ -19,7 +19,22 @@ pytest
 llm-eval --fixtures fixtures --out eval-report.json --require-actual
 ```
 
-Flags: `--fixtures`, `--out`, and `--require-actual`.
+Flags:
+
+| Flag | Description |
+|------|-------------|
+| `--fixtures` | Directory of fixture case subdirectories (default: `fixtures`) |
+| `--out` | Write JSON report to this path (stdout if omitted) |
+| `--require-actual` | Fail cases missing `actual.txt` instead of skipping |
+| `--case` / `-c` | Only run named case ids (directory names); repeatable |
+| `--list-metrics` | Print registered metric names one per line and exit |
+
+Examples:
+
+```bash
+llm-eval --list-metrics
+llm-eval --fixtures fixtures -c greeting -c summarize-bullets
+```
 
 ## Fixture layout
 
@@ -60,6 +75,11 @@ Example `meta.json`:
 | `case_insensitive_match` | Trimmed, case-insensitive equality |
 | `contains` | Expected is a substring of actual |
 | `token_overlap` | Jaccard similarity over whitespace tokens (pass if score >= 0.8) |
+| `starts_with` | Trimmed actual starts with trimmed expected |
+| `ends_with` | Trimmed actual ends with trimmed expected |
+| `regex_match` | Treat expected as a regex; `re.search` against actual (invalid regex → fail + error) |
+| `whitespace_normalized_match` | Collapse whitespace to single spaces, trim, then exact equality |
+| `length_ratio` | `min(len)/max(len)` (1 if both empty); pass if score >= 0.9 |
 
 A case **passes** only when every listed metric passes. Missing `actual.txt` is skipped (exit 0) unless `--require-actual` is set.
 

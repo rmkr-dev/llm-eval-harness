@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-eval-harness"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight offline LLM eval harness: score prompt/model outputs against golden fixtures and emit a JSON report."
 readme = "README.md"
 license = { text = "MIT" }
