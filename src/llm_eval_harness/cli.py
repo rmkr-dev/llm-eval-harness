@@ -107,12 +107,20 @@ def _discover_cases(
     default=False,
     help="Print registered metric names one per line and exit.",
 )
+@click.option(
+    "--fail-under",
+    "fail_under",
+    default=None,
+    type=float,
+    help="Exit 1 if summary pass_rate is below this threshold (0.0-1.0).",
+)
 def main(
     fixtures_dir: str,
     out_path: str | None,
     require_actual: bool,
     case_ids: tuple[str, ...],
     list_metrics_flag: bool,
+    fail_under: float | None,
 ) -> None:
     """Score fixture actual.txt against expected.txt; emit a JSON report."""
     if list_metrics_flag:
@@ -192,7 +200,11 @@ def main(
     click.echo(format_summary(report), err=True)
 
     failed_hard = any(not c["pass"] and not c.get("skipped") for c in case_results)
-    sys.exit(1 if failed_hard else 0)
+    below_threshold = (
+        fail_under is not None
+        and float(report["summary"]["pass_rate"]) < float(fail_under)
+    )
+    sys.exit(1 if (failed_hard or below_threshold) else 0)
 
 
 if __name__ == "__main__":
