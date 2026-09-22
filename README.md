@@ -2,6 +2,8 @@
 
 Lightweight **offline** LLM eval harness template for **GitHub Copilot**, **Claude Code**, and **Codex** workflows. Score prompt/model outputs against golden fixtures with simple metrics and emit a JSON report. No network calls; no model API keys required at eval time.
 
+**Version:** 0.3.0
+
 ## Requirements
 
 - Python >= 3.11
@@ -28,13 +30,17 @@ Flags:
 | `--require-actual` | Fail cases missing `actual.txt` instead of skipping |
 | `--case` / `-c` | Only run named case ids (directory names); repeatable |
 | `--list-metrics` | Print registered metric names one per line and exit |
+| `--fail-under` | Exit 1 if summary `pass_rate` is below this float (0.0–1.0) |
 
 Examples:
 
 ```bash
 llm-eval --list-metrics
 llm-eval --fixtures fixtures -c greeting -c summarize-bullets
+llm-eval --fixtures fixtures --fail-under 0.9
 ```
+
+Exit codes: `0` when all scored cases pass (and pass_rate meets `--fail-under` if set); `1` when any scored case fails or pass_rate is below `--fail-under`; `2` for usage/fixture errors.
 
 ## Fixture layout
 
@@ -74,6 +80,9 @@ Example `meta.json`:
 | `exact_match` | Trimmed string equality |
 | `case_insensitive_match` | Trimmed, case-insensitive equality |
 | `contains` | Expected is a substring of actual |
+| `contains_all` | Each non-empty expected line must appear as a substring of actual (case-sensitive); score = fraction found; empty expected → pass |
+| `contains_any` | At least one non-empty expected line is a substring of actual; empty expected → pass; score 1/0 |
+| `json_equal` | Parse both as JSON (`json.loads`) and deep-compare; parse errors → fail + `error`; score 1/0 |
 | `token_overlap` | Jaccard similarity over whitespace tokens (pass if score >= 0.8) |
 | `starts_with` | Trimmed actual starts with trimmed expected |
 | `ends_with` | Trimmed actual ends with trimmed expected |
@@ -82,6 +91,8 @@ Example `meta.json`:
 | `length_ratio` | `min(len)/max(len)` (1 if both empty); pass if score >= 0.9 |
 
 A case **passes** only when every listed metric passes. Missing `actual.txt` is skipped (exit 0) unless `--require-actual` is set.
+
+Report summary fields: `total` (all cases), `passed` / `failed` (non-skipped only), `skipped`, and `pass_rate` = `passed / (passed + failed)` (or `1.0` if everything was skipped).
 
 ## Using with Copilot / Claude Code / Codex
 
@@ -98,10 +109,12 @@ Do not invent new agent runtimes here—keep the loop to Copilot, Claude Code, a
 ## Library API
 
 ```python
-from llm_eval_harness import score, list_metrics, build_report
+from llm_eval_harness import score, list_metrics, build_report, contains_all, json_equal
 
 results = score("Hello World", "hello world", ["exact_match", "contains"])
 print(list_metrics())
+print(contains_all("a b c", "a\nc"))
+print(json_equal('{"x": 1}', '{"x": 1}'))
 ```
 
 ## License

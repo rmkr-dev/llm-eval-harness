@@ -11,14 +11,28 @@ def build_report(
     fixtures_dir: str = "fixtures",
     started_at: str | None = None,
     finished_at: str | None = None,
+    version: str | None = None,
 ) -> dict[str, Any]:
     """Build an eval report from per-case results."""
+    if version is None:
+        from . import __version__ as version
+
     total = len(cases)
-    passed = sum(1 for c in cases if c.get("pass"))
-    failed = total - passed
+    skipped = sum(1 for c in cases if c.get("skipped"))
+    scored = [c for c in cases if not c.get("skipped")]
+    passed = sum(1 for c in scored if c.get("pass"))
+    failed = sum(1 for c in scored if not c.get("pass"))
+    scored_n = passed + failed
+    if scored_n > 0:
+        pass_rate = float(f"{(passed / scored_n):.4f}")
+    elif total == 0:
+        pass_rate = 0.0
+    else:
+        # all skipped
+        pass_rate = 1.0
 
     metric_totals: dict[str, dict[str, float | int]] = {}
-    for c in cases:
+    for c in scored:
         for m in c.get("metrics") or []:
             name = m["name"]
             if name not in metric_totals:
@@ -40,7 +54,7 @@ def build_report(
 
     return {
         "harness": "llm-eval-harness",
-        "version": "0.1.0",
+        "version": version,
         "fixturesDir": fixtures_dir,
         "startedAt": started_at,
         "finishedAt": finished_at,
@@ -48,7 +62,8 @@ def build_report(
             "total": total,
             "passed": passed,
             "failed": failed,
-            "pass_rate": float(f"{(passed / total):.4f}") if total else 0,
+            "skipped": skipped,
+            "pass_rate": pass_rate,
         },
         "metrics": metrics_summary,
         "cases": cases,
@@ -59,10 +74,19 @@ def format_summary(report: dict[str, Any]) -> str:
     """Human-readable one-line-per-metric summary."""
     summary = report["summary"]
     metrics = report.get("metrics") or {}
-    lines = [
-        f"Eval: {summary['passed']}/{summary['total']} passed "
-        f"({summary['pass_rate'] * 100:.1f}%)"
-    ]
+    skipped = int(summary.get("skipped") or 0)
+    if skipped > 0:
+        head = (
+            f"Eval: {summary['passed']}/{summary['total']} passed "
+            f"({summary['pass_rate'] * 100:.1f}%), "
+            f"{skipped} skipped"
+        )
+    else:
+        head = (
+            f"Eval: {summary['passed']}/{summary['total']} passed "
+            f"({summary['pass_rate'] * 100:.1f}%)"
+        )
+    lines = [head]
     for name, m in metrics.items():
         lines.append(
             f"  {name}: mean={m['mean_score']} "

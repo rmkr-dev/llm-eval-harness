@@ -3,8 +3,11 @@
 from .metrics import (
     case_insensitive_match,
     contains,
+    contains_all,
+    contains_any,
     ends_with,
     exact_match,
+    json_equal,
     length_ratio,
     list_metrics,
     regex_match,
@@ -19,6 +22,9 @@ __all__ = [
     "exact_match",
     "case_insensitive_match",
     "contains",
+    "contains_all",
+    "contains_any",
+    "json_equal",
     "token_overlap",
     "starts_with",
     "ends_with",
@@ -31,4 +37,4 @@ __all__ = [
     "format_summary",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

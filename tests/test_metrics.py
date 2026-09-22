@@ -3,8 +3,11 @@
 from llm_eval_harness.metrics import (
     case_insensitive_match,
     contains,
+    contains_all,
+    contains_any,
     ends_with,
     exact_match,
+    json_equal,
     length_ratio,
     list_metrics,
     regex_match,
@@ -149,6 +152,96 @@ def test_length_ratio_empty_vs_nonempty():
     assert r["score"] == 0
 
 
+def test_contains_all_passes_when_all_lines_found():
+    r = contains_all("alpha beta gamma delta", "beta\ngamma")
+    assert r["pass"] is True
+    assert r["score"] == 1
+    assert r["name"] == "contains_all"
+
+
+def test_contains_all_partial_score():
+    r = contains_all("alpha beta", "beta\ngamma\ndelta")
+    assert r["pass"] is False
+    assert r["score"] == 0.3333
+    assert r["name"] == "contains_all"
+
+
+def test_contains_all_fails_when_none_found():
+    r = contains_all("alpha", "beta\ngamma")
+    assert r["pass"] is False
+    assert r["score"] == 0
+
+
+def test_contains_all_empty_expected_passes():
+    r = contains_all("anything", "")
+    assert r["pass"] is True
+    assert r["score"] == 1
+
+
+def test_contains_all_blank_lines_ignored():
+    r = contains_all("hello world", "\nhello\n\n")
+    assert r["pass"] is True
+    assert r["score"] == 1
+
+
+def test_contains_all_case_sensitive():
+    r = contains_all("Hello World", "hello")
+    assert r["pass"] is False
+    assert r["score"] == 0
+
+
+def test_contains_any_passes_on_one_hit():
+    r = contains_any("alpha beta", "gamma\nbeta")
+    assert r["pass"] is True
+    assert r["score"] == 1
+    assert r["name"] == "contains_any"
+
+
+def test_contains_any_fails_when_none_hit():
+    r = contains_any("alpha", "beta\ngamma")
+    assert r["pass"] is False
+    assert r["score"] == 0
+
+
+def test_contains_any_empty_expected_passes():
+    r = contains_any("anything", "\n\n")
+    assert r["pass"] is True
+    assert r["score"] == 1
+
+
+def test_json_equal_passes_on_deep_equal():
+    r = json_equal('{"a": 1, "b": [2, 3]}', '{"b": [2, 3], "a": 1}')
+    assert r["pass"] is True
+    assert r["score"] == 1
+    assert r["name"] == "json_equal"
+
+
+def test_json_equal_fails_on_mismatch():
+    r = json_equal('{"a": 1}', '{"a": 2}')
+    assert r["pass"] is False
+    assert r["score"] == 0
+
+
+def test_json_equal_parse_error_on_actual():
+    r = json_equal("not-json", '{"a": 1}')
+    assert r["pass"] is False
+    assert r["score"] == 0
+    assert "actual not valid JSON" in r["error"]
+
+
+def test_json_equal_parse_error_on_expected():
+    r = json_equal('{"a": 1}', "not-json")
+    assert r["pass"] is False
+    assert r["score"] == 0
+    assert "expected not valid JSON" in r["error"]
+
+
+def test_json_equal_scalars():
+    r = json_equal("42", "42")
+    assert r["pass"] is True
+    assert r["score"] == 1
+
+
 def test_list_metrics_includes_known_metrics():
     names = list_metrics()
     assert "exact_match" in names
@@ -158,6 +251,9 @@ def test_list_metrics_includes_known_metrics():
     assert "regex_match" in names
     assert "whitespace_normalized_match" in names
     assert "length_ratio" in names
+    assert "contains_all" in names
+    assert "contains_any" in names
+    assert "json_equal" in names
 
 
 def test_score_runs_multiple_metrics():

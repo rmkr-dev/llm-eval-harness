@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -158,6 +159,74 @@ def length_ratio(
     }
 
 
+def _nonempty_lines(text: str | None) -> list[str]:
+    return [ln for ln in str(text or "").splitlines() if ln]
+
+
+def contains_all(actual: str | None, expected: str | None) -> dict[str, Any]:
+    """Each non-empty expected line must be a substring of actual (case-sensitive).
+
+    Score = fraction of lines found; pass if all found.
+    No non-empty expected lines → pass with score 1.
+    """
+    a = str(actual or "")
+    lines = _nonempty_lines(expected)
+    if not lines:
+        return {"name": "contains_all", "pass": True, "score": 1}
+    found = sum(1 for ln in lines if ln in a)
+    if found == len(lines):
+        score_out: float | int = 1
+    elif found == 0:
+        score_out = 0
+    else:
+        score_out = float(f"{(found / len(lines)):.4f}")
+    return {
+        "name": "contains_all",
+        "pass": found == len(lines),
+        "score": score_out,
+    }
+
+
+def contains_any(actual: str | None, expected: str | None) -> dict[str, Any]:
+    """At least one non-empty expected line is a substring of actual.
+
+    No non-empty expected lines → pass with score 1. Score 1/0.
+    """
+    a = str(actual or "")
+    lines = _nonempty_lines(expected)
+    if not lines:
+        return {"name": "contains_any", "pass": True, "score": 1}
+    passed = any(ln in a for ln in lines)
+    return {"name": "contains_any", "pass": passed, "score": 1 if passed else 0}
+
+
+def json_equal(actual: str | None, expected: str | None) -> dict[str, Any]:
+    """Parse actual and expected as JSON; pass if deep-equal.
+
+    On parse error, pass=False with an error field. Score 1/0.
+    """
+    try:
+        a_obj = json.loads(str(actual or ""))
+    except (json.JSONDecodeError, TypeError) as exc:
+        return {
+            "name": "json_equal",
+            "pass": False,
+            "score": 0,
+            "error": f"actual not valid JSON: {exc}",
+        }
+    try:
+        e_obj = json.loads(str(expected or ""))
+    except (json.JSONDecodeError, TypeError) as exc:
+        return {
+            "name": "json_equal",
+            "pass": False,
+            "score": 0,
+            "error": f"expected not valid JSON: {exc}",
+        }
+    passed = a_obj == e_obj
+    return {"name": "json_equal", "pass": passed, "score": 1 if passed else 0}
+
+
 REGISTRY: dict[str, Any] = {
     "exact_match": exact_match,
     "case_insensitive_match": case_insensitive_match,
@@ -168,6 +237,9 @@ REGISTRY: dict[str, Any] = {
     "regex_match": regex_match,
     "whitespace_normalized_match": whitespace_normalized_match,
     "length_ratio": length_ratio,
+    "contains_all": contains_all,
+    "contains_any": contains_any,
+    "json_equal": json_equal,
 }
 
 
