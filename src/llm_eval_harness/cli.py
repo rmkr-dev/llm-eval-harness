@@ -1,4 +1,4 @@
-"""Offline eval runner CLI: load golden fixtures, score, emit JSON."""
+"""Offline eval runner CLI: load golden fixtures, score, emit a report."""
 
 from __future__ import annotations
 
@@ -10,13 +10,29 @@ from typing import Any
 
 import click
 
+from .formatters import FORMATS, render_report
 from .metrics import list_metrics as registered_metrics
 from .metrics import score as score_metrics
+from .metrics import validate_thresholds
 from .report import build_report, format_summary
 
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+class FixtureError(ValueError):
+    """Invalid fixture metadata."""
+
+
+def _normalize_tags(raw: Any, case_name: str) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not all(isinstance(t, str) for t in raw):
+        raise FixtureError(f"{case_name}/meta.json: tags must be a string or list of strings")
+    return [t.strip() for t in raw if t.strip()]
 
 
 def _load_case(case_dir: Path, case_name: str) -> dict[str, Any] | None:
@@ -37,12 +53,25 @@ def _load_case(case_dir: Path, case_name: str) -> dict[str, Any] | None:
 
     meta: dict[str, Any] = {"id": case_name, "metrics": ["exact_match"]}
     if meta_path.is_file():
-        raw = json.loads(_read_text(meta_path))
+        try:
+            raw = json.loads(_read_text(meta_path))
+        except json.JSONDecodeError as exc:
+            raise FixtureError(f"{case_name}/meta.json: invalid JSON: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise FixtureError(f"{case_name}/meta.json: expected a JSON object")
+        try:
+            thresholds = validate_thresholds(raw.get("thresholds"))
+        except ValueError as exc:
+            raise FixtureError(f"{case_name}/meta.json: {exc}") from exc
         meta = {
             **raw,
             "id": raw.get("id") or case_name,
             "metrics": raw.get("metrics") or ["exact_match"],
+            "tags": _normalize_tags(raw.get("tags"), case_name),
+            "thresholds": thresholds,
         }
+    meta.setdefault("tags", [])
+    meta.setdefault("thresholds", {})
 
     return {
         "case_dir": case_dir,
@@ -57,6 +86,7 @@ def _load_case(case_dir: Path, case_name: str) -> dict[str, Any] | None:
 def _discover_cases(
     fixtures_dir: Path,
     only: set[str] | None = None,
+    tags: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for ent in fixtures_dir.iterdir():
@@ -65,8 +95,11 @@ def _discover_cases(
         if only is not None and ent.name not in only:
             continue
         loaded = _load_case(ent, ent.name)
-        if loaded is not None:
-            cases.append(loaded)
+        if loaded is None:
+            continue
+        if tags is not None and not tags.intersection(loaded["meta"]["tags"]):
+            continue
+        cases.append(loaded)
     cases.sort(key=lambda c: c["case_name"])
     return cases
 
@@ -85,7 +118,16 @@ def _discover_cases(
     "out_path",
     default=None,
     type=click.Path(),
-    help="Write JSON report to this path (stdout if omitted).",
+    help="Write the report to this path (stdout if omitted).",
+)
+@click.option(
+    "--format",
+    "-f",
+    "report_format",
+    default="json",
+    show_default=True,
+    type=click.Choice(FORMATS),
+    help="Report format: json, markdown, or junit (JUnit XML for CI test reporters).",
 )
 @click.option(
     "--require-actual",
@@ -99,6 +141,13 @@ def _discover_cases(
     "case_ids",
     multiple=True,
     help="Only run named case ids (directory names). Repeatable.",
+)
+@click.option(
+    "--tag",
+    "-t",
+    "tag_filters",
+    multiple=True,
+    help="Only run cases whose meta.json tags include this tag. Repeatable (any match).",
 )
 @click.option(
     "--list-metrics",
@@ -117,12 +166,14 @@ def _discover_cases(
 def main(
     fixtures_dir: str,
     out_path: str | None,
+    report_format: str,
     require_actual: bool,
     case_ids: tuple[str, ...],
+    tag_filters: tuple[str, ...],
     list_metrics_flag: bool,
     fail_under: float | None,
 ) -> None:
-    """Score fixture actual.txt against expected.txt; emit a JSON report."""
+    """Score fixture actual.txt against expected.txt; emit a report."""
     if list_metrics_flag:
         for name in registered_metrics():
             click.echo(name)
@@ -136,22 +187,35 @@ def main(
         sys.exit(2)
 
     only = set(case_ids) if case_ids else None
-    loaded = _discover_cases(fixtures, only=only)
+    tags = {t.strip() for t in tag_filters if t.strip()} or None
+    try:
+        loaded = _discover_cases(fixtures, only=only, tags=tags)
+    except FixtureError as exc:
+        click.echo(f"Invalid fixture: {exc}", err=True)
+        sys.exit(2)
     if not loaded:
-        click.echo(
-            f"No fixture cases with expected.txt under {fixtures}",
-            err=True,
-        )
+        if tags:
+            click.echo(
+                f"No fixture cases under {fixtures} match tags: {', '.join(sorted(tags))}",
+                err=True,
+            )
+        else:
+            click.echo(
+                f"No fixture cases with expected.txt under {fixtures}",
+                err=True,
+            )
         sys.exit(2)
 
     case_results: list[dict[str, Any]] = []
     for c in loaded:
+        base: dict[str, Any] = {"id": c["meta"]["id"], "path": c["case_name"]}
+        if c["meta"]["tags"]:
+            base["tags"] = c["meta"]["tags"]
         if c["skipped"]:
             if require_actual:
                 case_results.append(
                     {
-                        "id": c["meta"]["id"],
-                        "path": c["case_name"],
+                        **base,
                         "pass": False,
                         "skipped": False,
                         "error": "missing actual.txt",
@@ -160,26 +224,19 @@ def main(
                 )
             else:
                 case_results.append(
-                    {
-                        "id": c["meta"]["id"],
-                        "path": c["case_name"],
-                        "pass": True,
-                        "skipped": True,
-                        "metrics": [],
-                    }
+                    {**base, "pass": True, "skipped": True, "metrics": []}
                 )
             continue
 
-        metrics = score_metrics(c["actual"], c["expected"], c["meta"]["metrics"])
+        metrics = score_metrics(
+            c["actual"],
+            c["expected"],
+            c["meta"]["metrics"],
+            thresholds=c["meta"]["thresholds"],
+        )
         passed = all(m["pass"] for m in metrics)
         case_results.append(
-            {
-                "id": c["meta"]["id"],
-                "path": c["case_name"],
-                "pass": passed,
-                "skipped": False,
-                "metrics": metrics,
-            }
+            {**base, "pass": passed, "skipped": False, "metrics": metrics}
         )
 
     finished_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -190,7 +247,7 @@ def main(
         finished_at=finished_at,
     )
 
-    payload = json.dumps(report, indent=2) + "\n"
+    payload = render_report(report, report_format)
     if out_path:
         Path(out_path).write_text(payload, encoding="utf-8")
         click.echo(f"Wrote {out_path}", err=True)
