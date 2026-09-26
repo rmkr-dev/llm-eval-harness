@@ -159,6 +159,54 @@ def length_ratio(
     }
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Classic edit distance (insert/delete/substitute cost 1), O(len(a)*len(b))."""
+    if a == b:
+        return 0
+    if len(a) < len(b):
+        a, b = b, a
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        cur = [i]
+        for j, cb in enumerate(b, start=1):
+            cur.append(
+                min(
+                    prev[j] + 1,
+                    cur[j - 1] + 1,
+                    prev[j - 1] + (ca != cb),
+                )
+            )
+        prev = cur
+    return prev[-1]
+
+
+def edit_ratio(
+    actual: str | None,
+    expected: str | None,
+    threshold: float = 0.8,
+) -> dict[str, Any]:
+    """Normalized Levenshtein similarity on trimmed strings.
+
+    Score = 1 - distance / max(len); 1 when both are empty.
+    Pass when score >= threshold (default 0.8).
+    """
+    a = str(actual or "").strip()
+    e = str(expected or "").strip()
+    max_len = max(len(a), len(e))
+    if max_len == 0:
+        score_val = 1.0
+    else:
+        score_val = float(f"{(1 - _levenshtein(a, e) / max_len):.4f}")
+    return {
+        "name": "edit_ratio",
+        "pass": score_val >= threshold,
+        "score": score_val,
+        "threshold": threshold,
+    }
+
+
 def _nonempty_lines(text: str | None) -> list[str]:
     return [ln for ln in str(text or "").splitlines() if ln]
 
@@ -240,17 +288,45 @@ REGISTRY: dict[str, Any] = {
     "contains_all": contains_all,
     "contains_any": contains_any,
     "json_equal": json_equal,
+    "edit_ratio": edit_ratio,
 }
+
+
+def validate_thresholds(thresholds: Any) -> dict[str, float]:
+    """Validate a ``{metric_name: float}`` mapping; values must be in [0, 1].
+
+    Raises ValueError with a readable message on bad input.
+    """
+    if thresholds is None:
+        return {}
+    if not isinstance(thresholds, dict):
+        raise ValueError("thresholds must be an object mapping metric name to number")
+    out: dict[str, float] = {}
+    for name, value in thresholds.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"threshold for {name!r} must be a number")
+        if not 0.0 <= float(value) <= 1.0:
+            raise ValueError(f"threshold for {name!r} must be between 0.0 and 1.0")
+        out[str(name)] = float(value)
+    return out
 
 
 def score(
     actual: str | None,
     expected: str | None,
     metric_names: list[str] | None = None,
+    thresholds: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Run named metrics against actual/expected."""
+    """Run named metrics against actual/expected.
+
+    ``thresholds`` optionally overrides the pass threshold per metric name.
+    A metric with an override passes when its score >= the threshold, which
+    also lets fractional metrics such as ``contains_all`` pass partially.
+    Results that carry an ``error`` always fail.
+    """
     if metric_names is None:
         metric_names = ["exact_match"]
+    overrides = validate_thresholds(thresholds)
     results: list[dict[str, Any]] = []
     for name in metric_names:
         fn = REGISTRY.get(name)
@@ -264,7 +340,13 @@ def score(
                 }
             )
             continue
-        results.append(fn(actual, expected))
+        result = fn(actual, expected)
+        if name in overrides:
+            limit = overrides[name]
+            result["threshold"] = limit
+            if "error" not in result:
+                result["pass"] = float(result.get("score") or 0) >= limit
+        results.append(result)
     return results
 
 

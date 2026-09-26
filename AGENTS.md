@@ -7,7 +7,7 @@ Scope: offline LLM eval harness for Copilot / Claude Code / Codex only.
 - Add or update golden fixtures under `fixtures/`.
 - Keep metrics simple (`src/llm_eval_harness/metrics.py`); prefer extending the registry over new frameworks.
 - After producing model output, write `actual.txt` next to `expected.txt`, then run `llm-eval`.
-- Emit JSON reports only—no dashboards or remote callers.
+- Emit file-based reports only (JSON, Markdown, JUnit XML)—no dashboards or remote callers.
 
 ## Do not
 

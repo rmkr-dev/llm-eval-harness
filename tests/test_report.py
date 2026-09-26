@@ -7,7 +7,7 @@ from llm_eval_harness.report import build_report, format_summary
 def test_build_report_uses_package_version():
     report = build_report(cases=[])
     assert report["version"] == __version__
-    assert report["version"] == "0.3.0"
+    assert report["version"] == "1.0.0"
 
 
 def test_build_report_accepts_version_override():
@@ -64,3 +64,12 @@ def test_format_summary_omits_skipped_when_zero():
     )
     text = format_summary(report)
     assert "skipped" not in text
+
+
+def test_package_version_matches_pyproject():
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    assert data["project"]["version"] == __version__

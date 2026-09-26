@@ -1,5 +1,7 @@
 {
   "id": "summarize-bullets",
   "description": "Two-bullet summary; allow soft overlap",
-  "metrics": ["contains", "token_overlap"]
+  "metrics": ["contains", "token_overlap", "edit_ratio"],
+  "thresholds": { "edit_ratio": 0.9 },
+  "tags": ["smoke", "summarization"]
 }
